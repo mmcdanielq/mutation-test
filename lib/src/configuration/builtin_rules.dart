@@ -294,3 +294,302 @@ String dartExcludeStringsConfiguration() {
 String dartDefaultConfiguration() {
   return _xmlStart() + _xmlDartInputs() + _xmlEnd();
 }
+
+// -------------------------------------------------------------------------
+// YAML equivalents
+// -------------------------------------------------------------------------
+
+/// Returns the builtin mutation rules as a YAML string
+String builtinMutationRulesYaml() {
+  return 'version: "1.2"\n\n${_yamlRules()}${_yamlExclude()}';
+}
+
+/// Returns a complete example YAML config file
+String fullYamlFile() {
+  return 'version: "1.2"\n\n${_yamlInputs()}${_yamlRules()}${_yamlExclude()}${_yamlThresholds()}';
+}
+
+/// Returns the default dart configuration as YAML
+String dartDefaultConfigurationYaml() {
+  return 'version: "1.2"\n\n${_yamlDartInputs()}';
+}
+
+/// Returns the exclude-strings configuration as YAML
+String dartExcludeStringsConfigurationYaml() {
+  return 'version: "1.2"\n\n${_yamlExcludeStrings()}';
+}
+
+String _yamlInputs() {
+  return r'''# List all input files here
+# The path key must contain a valid path to a file
+# You can specify which lines should be mutated with the lines list
+# If there are no lines specified, the whole file is used
+files:
+  - path: example/source.dart
+  - path: example/source2.dart
+    lines:
+      - begin: 13
+        end: 24
+      - begin: 29
+        end: 35
+  # Wildcards can be used as part of the paths:
+  # adds all files from example that end with .dart
+  # - path: example/*.dart
+  # adds all files from example and all subdirectories ending in .dart
+  # - path: example/**.dart
+
+# You can list all input directories here
+directories:
+  - path: lib
+    recursive: true
+    matching:
+      - pattern: '\.cpp$'
+      - pattern: '\.cxx$'
+      - pattern: '\.c$'
+
+# Specify the test commands here
+# text: the command that will be executed as a shell process
+# group: used to show statistics for the commands
+# expected-return: compared to the return value of the command
+# working-directory: where the program is executed (defaults to .)
+# timeout: timeout in seconds
+commands:
+  - text: "make -j8"
+    group: compile
+    expected-return: 0
+    working-directory: "."
+  - text: "ctest -j8"
+    group: test
+    expected-return: 0
+    working-directory: "."
+    timeout: 10
+
+''';
+}
+
+String _yamlRules() {
+  return r'''rules:
+  literals:
+    - text: "&&"
+      id: builtin.and
+      mutations:
+        - text: "||"
+    - text: "||"
+      id: builtin.or
+      mutations:
+        - text: "&&"
+    - text: "+="
+      id: builtin.op.add_assign
+      mutations:
+        - text: "="
+    - text: "-="
+      id: builtin.op.sub_assign
+      mutations:
+        - text: "="
+    - text: "*="
+      id: builtin.op.mul_assign
+      mutations:
+        - text: "="
+    - text: "/="
+      id: builtin.op.div_assign
+      mutations:
+        - text: "="
+    - text: "&="
+      id: builtin.op.and_assign
+      mutations:
+        - text: "="
+    - text: "^="
+      id: builtin.op.or_assign
+      mutations:
+        - text: "="
+    - text: "=="
+      id: builtin.op.eq
+      mutations:
+        - text: "!="
+    - text: "!="
+      id: builtin.op.neq
+      mutations:
+        - text: "=="
+    - text: "<="
+      id: builtin.op.leq
+      mutations:
+        - text: "=="
+        - text: "<"
+    - text: ">="
+      id: builtin.op.geq
+      mutations:
+        - text: "=="
+        - text: ">"
+  regexes:
+    - pattern: '[\s]if[\s]*\((.*?)\)[\s]*{'
+      dot-all: true
+      id: builtin.if
+      mutations:
+        - text: ' if (!($1)) {'
+    - pattern: '&([^&()]+?)&'
+      dot-all: true
+      id: builtin.logical.and_chain
+      mutations:
+        - text: '&!($1)&'
+    - pattern: '\|([^|()]+?)\|'
+      dot-all: true
+      id: builtin.logical.or_chain
+      mutations:
+        - text: '|!($1)|'
+    - pattern: '\(([^$(]*?)&&([^$()]*?)\)'
+      id: builtin.logical.and_chain2
+      mutations:
+        - text: '(!($1)&&$2)'
+        - text: '($1&&!($2))'
+    - pattern: '\(([^|(]*?)\|\|([^()|]*?)\)'
+      id: builtin.logical.or_chain2
+      mutations:
+        - text: '(!($1)||$2)'
+        - text: '($1||!($2))'
+    - pattern: 'if\s*\(([^|&\)]*?)([|&][|&])'
+      id: builtin.if.start
+      mutations:
+        - text: 'if (!($1)$2'
+    - pattern: '([|&][|&])([^|&]*?)\)'
+      id: builtin.if.end
+      mutations:
+        - text: '$1!($2))'
+    - pattern: '([|&][|&])[\s]*?\('
+      dot-all: true
+      id: builtin.logical.chain_not
+      mutations:
+        - text: '$1!('
+    - pattern: '([\s=\(])([1-9\.]+[0-9]+|0\.0*[1-9])'
+      id: builtin.number.negative
+      mutations:
+        - text: '$1-$2'
+    - pattern: '([\s][a-zA-Z]+?[^(;\s{}]*?)\s*\(([^,:;{}(]+?),([^,:;{}(]+?)\)\s*;'
+      id: builtin.function.arg2
+      mutations:
+        - text: '$1($3,$2);'
+    - pattern: '([\s][a-zA-Z]+?[^\(;\s{}]*?)\s*\(([^,:;{}(]+?),([^,:;{}(]+?),([^,:;{}(]+?)\)\s*;'
+      id: builtin.function.arg3
+      mutations:
+        - text: '$1($3,$2,$4);'
+        - text: '$1($2,$4,$3);'
+    - pattern: '([\s][a-zA-Z]+?[^\(;\s{}]*?)\s*\(([^,:;{}(]+?),([^,:;{}(]+?),([^,:;{}(]+?),([^,:;{}(]+?)\)\s*;'
+      id: builtin.function.arg4
+      mutations:
+        - text: '$1($3,$2,$4,$5);'
+        - text: '$1($2,$4,$3,$5);'
+        - text: '$1($2,$3,$5,$4);'
+    - pattern: '\+([^=])'
+      id: builtin.arith.add
+      mutations:
+        - text: '-$1'
+    - pattern: '-([^=])'
+      id: builtin.arith.sub
+      mutations:
+        - text: '+$1'
+    - pattern: '\*([^=])'
+      id: builtin.arith.mul
+      mutations:
+        - text: '/$1'
+    - pattern: '/([^=])'
+      id: builtin.arith.div
+      mutations:
+        - text: '*$1'
+    - pattern: 'break;(\s+)case'
+      id: builtin.switch.break
+      mutations:
+        - text: '$1case'
+    - pattern: '([=:>]\s*)\[([^\],]+),([^\]]+)\]'
+      id: builtin.list.clear
+      mutations:
+        - text: '$1[]'
+    - pattern: '([{]\s*)([^\(;=\s}]+\([^;]+\)\s*;)'
+      id: builtin.function.removeVoidCall1
+      mutations:
+        - text: '$1'
+    - pattern: '([};]\s*)([^\(;=\s}]+\([^;]+\)\s*;)'
+      id: builtin.function.removeVoidCall2
+      mutations:
+        - text: '$1'
+
+''';
+}
+
+String _yamlExclude() {
+  // Use a raw string: \n in YAML double-quoted scalars is interpreted by the
+  // YAML parser as a newline, so we need the literal two-character sequence \n
+  // in the string (which a raw Dart string provides).
+  return r'''exclude:
+  tokens:
+    - begin: "//"
+      end: "\n"
+    - begin: "export '"
+      end: "';"
+    - begin: "import '"
+      end: "';"
+    - begin: 'export "'
+      end: '";"'
+    - begin: 'import "'
+      end: '";"'
+  regexes:
+    - pattern: '/[*].*?[*]/'
+      dot-all: true
+    - pattern: '\+\+'
+    - pattern: '--'
+    - pattern: '[\s]for[\s]*\(.*?\)[\s]*{'
+      dot-all: true
+    - pattern: '[\s]while[\s]*\(.*?\)[\s]*{.*?}'
+      dot-all: true
+
+''';
+}
+
+String _yamlThresholds() {
+  return r'''threshold:
+  failure: 80.0
+  ratings:
+    - over: 95.0
+      name: A
+    - over: 80.0
+      name: B
+    - over: 60.0
+      name: C
+    - over: 40.0
+      name: D
+    - over: 20.0
+      name: E
+    - over: 0.0
+      name: F
+''';
+}
+
+String _yamlDartInputs() {
+  return r'''directories:
+  - path: lib
+    recursive: true
+    matching:
+      - pattern: '\.dart$'
+''';
+}
+
+String _yamlExcludeStrings() {
+  // Use YAML block literal scalars (|-) so quote characters in the patterns
+  // need no YAML escaping. |- strips the trailing newline. In the Dart
+  // """...""" string, \\s→\s and \\)→\) as Dart escape sequences; the YAML
+  // block scalar then passes them verbatim as regex escapes. \"\"\"→""" to
+  // avoid terminating the Dart triple-double-quoted string.
+  return """exclude:
+  regexes:
+    - pattern: |-
+        '[^';{}]*?\\s*[;,\\)]
+      dot-all: true
+    - pattern: |-
+        '''[^{}]*?'''\\s*[;,\\)]
+      dot-all: true
+    - pattern: |-
+        "[^";{}]*?"\\s*[;,\\)]
+      dot-all: true
+    - pattern: |-
+        \"\"\"[^{}]*?\"\"\"\\s*[;,\\)]
+      dot-all: true
+""";
+}

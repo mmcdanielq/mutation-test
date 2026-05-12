@@ -21,6 +21,7 @@ void main(List<String> arguments) async {
   final format = 'format';
   final quiet = 'quiet';
   final excludeStrings = 'exclude-strings';
+  final xml = 'xml';
 
   final parser = ArgParser()
     ..addFlag(help,
@@ -41,11 +42,13 @@ void main(List<String> arguments) async {
         defaultsTo: true)
     ..addFlag(show,
         abbr: 's',
-        help: 'Prints a XML file to the console with every possible option',
+        help:
+            'Prints a config file to the console with every possible option (YAML by default, use --xml for XML)',
         negatable: false)
     ..addFlag(generateRules,
         abbr: 'g',
-        help: 'Prints the builtin rule set as XML string',
+        help:
+            'Prints the builtin rule set (YAML by default, use --xml for XML)',
         negatable: false)
     ..addFlag(verbose,
         abbr: 'v', help: 'Verbose output', negatable: false, defaultsTo: false)
@@ -82,8 +85,13 @@ void main(List<String> arguments) async {
         defaultsTo: 'html')
     ..addMultiOption(rules,
         abbr: 'r',
-        help: 'Load the rules from the given XML Document',
-        valueHelp: 'path to XML file');
+        help: 'Load the rules from the given YAML or XML document',
+        valueHelp: 'path to YAML or XML file')
+    ..addFlag(xml,
+        help:
+            'Output XML format for --show-example and --generate-rules (default is YAML)',
+        negatable: false,
+        defaultsTo: false);
 
   late ArgResults argResults;
   try {
@@ -106,11 +114,11 @@ void main(List<String> arguments) async {
     exit(0);
   }
   if (argResults[show] as bool) {
-    printExample();
+    printExample(argResults[xml] as bool);
     exit(0);
   }
   if (argResults[generateRules] as bool) {
-    printExampleRules();
+    printExampleRules(argResults[xml] as bool);
     exit(0);
   }
 
@@ -186,49 +194,50 @@ void handleProcessingError([String errorMessage = '']) {
 
 void printHelp(dynamic parser) {
   print('''
-Usage : mutation-test <options> <input xml or source files...>  
+Usage : mutation-test <options> <input yaml/xml or source files...>
 A program that mutates your source code and verifies that the test commands
-specified in the input xml files are sensitive to those changes. Mutations
+specified in the input config files are sensitive to those changes. Mutations
 are done as simple text replacements with regular expressions, so any text
 file can be mutated. Once one of the files has been mutated, all provided
 test commands are run as a separate process. The exit code of these
 commands is used to verify that the mutation was detected. If all tests
 return the expected return value, then the mutation was undetected and is
-added to the results. After all mutations were done, the results will be 
+added to the results. After all mutations were done, the results will be
 written to the terminal and a report file is generated.
 mutation-test is free software, as in "free beer" and "free speech".
 
-mutation-test contains a set of builtin rules, that allow you to start 
+mutation-test contains a set of builtin rules, that allow you to start
 testing right away. However, all rules defining the behavior of this program
-can be customized. They are defined in XML documents, and you can change:
+can be customized. They are defined in YAML or XML documents, and you can change:
   - input files and whitelist lines for mutations
   - compile/test commands, expected return codes and timeouts
   - provide exclusion zones via regular expressions
   - mutation rules as simple text replacement or via regular
     expressions including capture groups
   - the quality gate and quality ratings
-You can view a complete example with every possible XML element parsed by 
-this program by invoking "mutation-test -s". This will print a XML document to
-the standard output. The displayed document also contains comments explaining 
-the syntax of the XML file. You can provide multiple input documents for a 
-single program start. The inputs are split into three categories:
-  - xml rules documents: The mutation rules for all other files are parsed
-    from these documents and added globally. Rules are specified via "--rules".
-  - xml documents: These files will be parsed like the rules documents, but
-    anything defined in them applies only inside this document. 
+You can view a complete example with every possible option by invoking
+"mutation-test -s". This will print a YAML document to the standard output.
+Use "mutation-test -s --xml" to get the XML equivalent. You can provide
+multiple input documents for a single program start. The inputs are split
+into three categories:
+  - rules documents (.yaml/.yml/.xml): The mutation rules for all other files
+    are parsed from these documents and added globally. Rules are specified
+    via "--rules".
+  - config documents (.yaml/.yml/.xml): These files will be parsed like the
+    rules documents, but anything defined in them applies only inside this
+    document.
   - all other input files
 If a rules file is provided via the command line flag "--rules", then the
 builtin rules are disabled, unless you specifically add them by passing "-b".
 You can provide as many rule sets as you like, and all of them will be added
-globally. The rest of the input files is processed individually. If the file 
-extension is ".xml", then the file will be parsed like an additional rules file.
-However, this document must have a <files> element that lists all mutation
-targets. Any other file is interpreted as mutation target and processed with 
-the rules from the documents provided via "--rules". 
+globally. The rest of the input files is processed individually. If the file
+extension is ".yaml", ".yml", or ".xml", then the file will be parsed as a
+config file. Any other file is interpreted as mutation target and processed
+with the rules from the documents provided via "--rules".
 
-The rules documents and the input xml files use the same syntax, so both 
+The rules documents and the input config files use the same syntax, so both
 files may define mutation rules, inputs, exclusions or test commands.
-However, a quality threshold may only be defined once. 
+However, a quality threshold may only be defined once.
 
 
 Options:''');
@@ -243,13 +252,13 @@ Options:''');
   exit(exitCode);
 }
 
-void printExample() {
-  print(fullXMLFile());
+void printExample(bool useXml) {
+  print(useXml ? fullXMLFile() : fullYamlFile());
   exit(0);
 }
 
-void printExampleRules() {
-  print(builtinMutationRules());
+void printExampleRules(bool useXml) {
+  print(useXml ? builtinMutationRules() : builtinMutationRulesYaml());
   exit(0);
 }
 

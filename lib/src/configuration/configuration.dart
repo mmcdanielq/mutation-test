@@ -2,10 +2,11 @@
 // License: BSD-3-Clause
 // See LICENSE for the full text of the license
 
-import 'package:xml/xml.dart' as xml;
+import 'package:mutation_test/src/configuration/path_matcher.dart';
 import 'package:mutation_test/src/core/core.dart';
 import 'package:mutation_test/src/reports/ratings.dart';
-import 'package:mutation_test/src/configuration/path_matcher.dart';
+import 'package:xml/xml.dart' as xml;
+import 'package:yaml/yaml.dart';
 
 /// A structure holding the information about the mutation input.
 class TargetFile {
@@ -61,7 +62,11 @@ class Configuration {
   void addRulesFromFile(String path) {
     system.verboseWriteLine('Processing $path');
     final contents = system.readFile(path);
-    parseXMLString(contents);
+    if (path.endsWith('.yaml') || path.endsWith('.yml')) {
+      parseYamlString(contents);
+    } else {
+      parseXMLString(contents);
+    }
   }
 
   /// Removes all input source files from the target file list
@@ -386,5 +391,258 @@ class Configuration {
           'Each <regex> rule must have at least one <mutation> child!');
     }
     mutations.add(mutation);
+  }
+
+  // -------------------------------------------------------------------------
+  // YAML parsing
+  // -------------------------------------------------------------------------
+
+  /// Parses a YAML string with the given [contents]
+  void parseYamlString(String contents) {
+    final doc = loadYaml(contents);
+    if (doc is! YamlMap) {
+      throw MutationError('Invalid YAML config: root must be a map');
+    }
+    _processYamlTopLevel(doc);
+    _removeExcludedSourceFiles();
+  }
+
+  void _processYamlTopLevel(YamlMap root) {
+    final version = root['version'];
+    if (version == null) {
+      throw MutationError('No "version" key found in YAML config!');
+    }
+    final v = double.parse(version.toString());
+    if (v != 1.0 && v != 1.1 && v != 1.2) {
+      throw MutationError('Config version "$version" not supported!');
+    }
+    system.verboseWriteLine('- configuration file version $version');
+
+    final filesList = root['files'];
+    if (filesList is YamlList) {
+      for (final f in filesList) {
+        _addFileFromYaml(f);
+      }
+    }
+
+    final dirsList = root['directories'];
+    if (dirsList is YamlList) {
+      for (final d in dirsList) {
+        _addDirectoryFromYaml(d);
+      }
+    }
+    system.verboseWriteLine(' ${files.length} input files');
+
+    final rules = root['rules'];
+    if (rules is YamlMap) {
+      final literals = rules['literals'];
+      if (literals is YamlList) {
+        for (final l in literals) {
+          _addLiteralRuleFromYaml(l);
+        }
+      }
+      final regexes = rules['regexes'];
+      if (regexes is YamlList) {
+        for (final r in regexes) {
+          _addRegexRuleFromYaml(r);
+        }
+      }
+    }
+    system.verboseWriteLine(' ${mutations.length} mutation rules');
+
+    final exclude = root['exclude'];
+    if (exclude is YamlMap) {
+      _processYamlExclude(exclude);
+    }
+    system.verboseWriteLine(' ${exclusions.length} exclusion rules');
+
+    final commandsList = root['commands'];
+    if (commandsList is YamlList) {
+      for (final c in commandsList) {
+        _addCommandFromYaml(c);
+      }
+    }
+    system.verboseWriteLine(' ${commands.length} commands');
+
+    final threshold = root['threshold'];
+    if (threshold is YamlMap) {
+      _parseThresholdFromYaml(threshold);
+    }
+  }
+
+  void _addFileFromYaml(dynamic entry) {
+    if (entry is! YamlMap) {
+      throw MutationError('Each file entry must be a map');
+    }
+    final path = entry['path'] as String?;
+    if (path == null) throw MutationError('File entry missing "path" key');
+    var whitelist = <Range>[];
+    final lines = entry['lines'];
+    if (lines is YamlList) {
+      for (final l in lines) {
+        whitelist.add(LineRange(l['begin'] as int, l['end'] as int));
+      }
+    }
+    _addFilesFromPatternToTargetList(PathMatcher(path, false), whitelist);
+  }
+
+  void _addDirectoryFromYaml(dynamic entry) {
+    if (entry is! YamlMap) {
+      throw MutationError('Each directory entry must be a map');
+    }
+    final path = entry['path'] as String?;
+    if (path == null) throw MutationError('Directory entry missing "path" key');
+    if (!system.directoryExists(path)) {
+      throw MutationError('Input directory "$path" not found!');
+    }
+    final recursive = entry['recursive'] as bool? ?? false;
+    final List<RegExp> patterns = [];
+    final matching = entry['matching'];
+    if (matching is YamlList) {
+      for (final m in matching) {
+        final pat = (m as YamlMap)['pattern'] as String?;
+        if (pat == null) {
+          throw MutationError('matching entry missing "pattern"');
+        }
+        patterns.add(RegExp(pat));
+      }
+    }
+    files.addAll(system
+        .listDirectoryContents(path, recursive, patterns)
+        .map((e) => TargetFile(e, [])));
+  }
+
+  void _addLiteralRuleFromYaml(dynamic entry) {
+    if (entry is! YamlMap) {
+      throw MutationError('Each literal entry must be a map');
+    }
+    final text = entry['text'] as String?;
+    if (text == null) throw MutationError('Literal entry missing "text" key');
+    final mutation =
+        Mutation(mutations.length, text, id: entry['id'] as String?);
+    final muts = entry['mutations'];
+    if (muts is! YamlList || muts.isEmpty) {
+      throw MutationError('Each literal rule must have at least one mutation');
+    }
+    for (final m in muts) {
+      final replacement = (m as YamlMap)['text'] as String?;
+      if (replacement == null) {
+        throw MutationError('Mutation entry missing "text"');
+      }
+      mutation.replacements.add(LiteralReplacement(replacement));
+    }
+    mutations.add(mutation);
+  }
+
+  void _addRegexRuleFromYaml(dynamic entry) {
+    if (entry is! YamlMap) {
+      throw MutationError('Each regex entry must be a map');
+    }
+    final pattern = entry['pattern'] as String?;
+    if (pattern == null) throw MutationError('Regex entry missing "pattern"');
+    final dotAll = entry['dot-all'] as bool? ?? false;
+    final regexp = RegExp(pattern, multiLine: true, dotAll: dotAll);
+    final mutation =
+        Mutation(mutations.length, regexp, id: entry['id'] as String?);
+    final muts = entry['mutations'];
+    if (muts is! YamlList || muts.isEmpty) {
+      throw MutationError('Each regex rule must have at least one mutation');
+    }
+    for (final m in muts) {
+      final replacement = (m as YamlMap)['text'] as String?;
+      if (replacement == null) {
+        throw MutationError('Mutation entry missing "text"');
+      }
+      mutation.replacements.add(RegexReplacement(replacement));
+    }
+    mutations.add(mutation);
+  }
+
+  void _processYamlExclude(YamlMap exclude) {
+    final tokens = exclude['tokens'];
+    if (tokens is YamlList) {
+      for (final t in tokens) {
+        final begin = (t as YamlMap)['begin'] as String?;
+        final end = t['end'] as String?;
+        if (begin == null || end == null) {
+          throw MutationError('Token exclusion missing "begin" or "end"');
+        }
+        exclusions.add(TokenRange(begin, end));
+      }
+    }
+    final lines = exclude['lines'];
+    if (lines is YamlList) {
+      for (final l in lines) {
+        exclusions
+            .add(LineRange((l as YamlMap)['begin'] as int, l['end'] as int));
+      }
+    }
+    final regexes = exclude['regexes'];
+    if (regexes is YamlList) {
+      for (final r in regexes) {
+        final pat = (r as YamlMap)['pattern'] as String?;
+        if (pat == null) {
+          throw MutationError('Regex exclusion missing "pattern"');
+        }
+        final dotAll = r['dot-all'] as bool? ?? false;
+        exclusions
+            .add(RegexRange(RegExp(pat, multiLine: true, dotAll: dotAll)));
+      }
+    }
+    final excFiles = exclude['files'];
+    if (excFiles is YamlList) {
+      for (final f in excFiles) {
+        excludedPaths.add(PathMatcher((f as YamlMap)['path'] as String, false));
+      }
+    }
+    final excDirs = exclude['directories'];
+    if (excDirs is YamlList) {
+      for (final d in excDirs) {
+        excludedPaths.add(PathMatcher((d as YamlMap)['path'] as String, true));
+      }
+    }
+  }
+
+  void _addCommandFromYaml(dynamic entry) {
+    if (entry is! YamlMap) {
+      throw MutationError('Each command entry must be a map');
+    }
+    final text = entry['text'] as String?;
+    if (text == null) throw MutationError('Command entry missing "text"');
+    final parts = text.trim().split(' ');
+    final process = parts[0];
+    final args = parts.sublist(1);
+    final cmd = Command(text, process, args);
+    if (entry['group'] != null) cmd.group = entry['group'] as String;
+    if (entry['expected-return'] != null) {
+      cmd.expectedReturnValue = entry['expected-return'] as int;
+    }
+    if (entry['timeout'] != null) {
+      cmd.timeout = Duration(seconds: entry['timeout'] as int);
+    }
+    cmd.directory = entry['working-directory'] as String?;
+    commands.add(cmd);
+  }
+
+  void _parseThresholdFromYaml(YamlMap threshold) {
+    if (ratings.initialized) {
+      throw MutationError(
+          'There must be only one threshold block in the inputs!');
+    }
+    final failure = threshold['failure'];
+    if (failure == null) throw MutationError('threshold missing "failure" key');
+    ratings.failure = (failure as num).toDouble();
+    final ratingsList = threshold['ratings'];
+    if (ratingsList is YamlList) {
+      for (final r in ratingsList) {
+        final over = (r as YamlMap)['over'];
+        final name = r['name'] as String?;
+        if (over == null || name == null) {
+          throw MutationError('Rating entry missing "over" or "name"');
+        }
+        ratings.addRating((over as num).toDouble(), name);
+      }
+    }
+    system.verboseWriteLine(' $ratings');
   }
 }

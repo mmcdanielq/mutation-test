@@ -225,12 +225,14 @@ class MutationTest {
     if (addBuiltin) {
       system.verboseWriteLine('Adding the builtin default mutation rules!');
       reporter.addInputFile('Builtin Rules');
-      configuration.parseXMLString(builtinMutationRules());
+      configuration.parseYamlString(builtinMutationRulesYaml());
     }
     if (!useDefaultConfig) {
-      if (inputFile.endsWith('.xml')) {
+      if (inputFile.endsWith('.xml') ||
+          inputFile.endsWith('.yaml') ||
+          inputFile.endsWith('.yml')) {
         system.verboseWriteLine(
-            'Loading additional XML configuration : "$inputFile"');
+            'Loading additional configuration : "$inputFile"');
         configuration.addRulesFromFile(inputFile);
       } else {
         configuration.files.add(TargetFile(inputFile, []));
@@ -238,11 +240,11 @@ class MutationTest {
     } else {
       system.verboseWriteLine(
           'No input files found - assuming default dart configuration!');
-      configuration.parseXMLString(dartDefaultConfiguration());
+      configuration.parseYamlString(dartDefaultConfigurationYaml());
     }
     if (excludeStrings) {
       system.writeLine('[experimental] exclusion of strings is enabled');
-      configuration.parseXMLString(dartExcludeStringsConfiguration());
+      configuration.parseYamlString(dartExcludeStringsConfigurationYaml());
     }
     configuration.inferCommandsIfEmpty();
     configuration.validate();
