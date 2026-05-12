@@ -2,9 +2,10 @@
 // License: BSD-3-Clause
 // See LICENSE for the full text of the license
 
-import 'package:mutation_test/mutation_test.dart';
-import 'package:args/args.dart';
 import 'dart:io';
+
+import 'package:args/args.dart';
+import 'package:mutation_test/mutation_test.dart';
 
 void main(List<String> arguments) async {
   final help = 'help';
