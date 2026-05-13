@@ -15,7 +15,7 @@ Performing this procedure manually on a whole program is extremely tedious.
 
 This repository contains a command line program that automates this procedure for code in any programming language. It can be customized to 
 your needs, because all rules modifying the source code and how to
-run the tests can be defined in XML documents. The program is fully self contained, so you can just grab the binary and start testing!
+run the tests can be defined in YAML or XML documents. The program is fully self contained, so you can just grab the binary and start testing!
 
 ## Quick start
 
@@ -44,18 +44,19 @@ The application also supports several command line options:
 ```bash
 # Prints a summary of all command line options:
 dart run mutation_test --help
-# Run the tests defined in "example/config.xml":
-dart run mutation_test example/config.xml
+# Run the tests defined in "example/config.yaml":
+dart run mutation_test example/config.yaml
 # Or a fully customized test run with a rules file and 3 input files:
-# The rules contained in mutation-rules.xml are always used when testing files.
-# inputset1.xml may define special rules for some files that
-# are also listed in the same xml document.
+# The rules contained in mutation-rules.yaml are always used when testing files.
+# inputset1.yaml may define special rules for some files that
+# are also listed in the same yaml document.
 # The input files source1.cpp and source2.cpp
-# are just tested with the rules from mutation-rules.xml (--rules).
-# The output is written to directory output (-o) and the 
+# are just tested with the rules from mutation-rules.yaml (--rules).
+# The output is written to directory output (-o) and the
 # report is generated as markdown file (-f md).
-dart run mutation_test -f md -o output --rules mutation-rules.xml inputset1.xml \
+dart run mutation_test -f md -o output --rules mutation-rules.yaml inputset1.yaml \
     source1.cpp source2.cpp
+# Note: XML config files (.xml) are also supported
 ```
 The first command in the section above would produce the following [report](https://domohuhn.github.io/mutation-test/doc/output/mutation-test-report.html).
 Check also the [examples folder](https://github.com/domohuhn/mutation-test/tree/main/example), as it contains the inputs to produce this report.
@@ -95,7 +96,7 @@ dart run mutation_test --exclude-strings
 ```
 
 ## Features
-  - Fully configurable mutation rules via XML documents and regular expressions
+  - Fully configurable mutation rules via YAML (or XML) documents and regular expressions
   - Sections of files can be whitelisted on a per file basis
   - Only mutants whose statements are covered will be executed
   - You can add global exclusion rules for e.g. comments, loop conditions via regular expressions
@@ -115,70 +116,62 @@ mutation_test is free software, as in "free beer" and "free speech".
 
 mutation_test contains a set of builtin rules, that allow you to start 
 testing right away. However, all rules defining the behavior of this program
-can be customized. They are defined in XML documents, and you can change:
+can be customized. They are defined in YAML (or XML) documents, and you can change:
   - input files and whitelist lines for mutations
   - compile/test commands, expected return codes and timeouts
   - provide exclusion zones via regular expressions
   - mutation rules as simple text replacement or via regular
     expressions including capture groups
   - the quality gate and quality ratings
-You can view a complete example with every possible XML element parsed by 
-this program by invoking "mutation_test -s". This will print a XML document to
-the standard output. The displayed document also contains comments explaining 
-the syntax of the XML file. You can provide multiple input documents for a 
-single program start. The inputs are split into three categories:
-  - xml rules documents: The mutation rules for all other files are parsed
+You can view a complete example with every possible option by invoking
+"mutation_test -s". This will print a YAML document to the standard output.
+Use "mutation_test -s --xml" to get the XML equivalent instead. The displayed
+document also contains comments explaining the syntax. You can provide multiple
+input documents for a single program start. The inputs are split into three categories:
+  - YAML or XML rules documents: The mutation rules for all other files are parsed
     from these documents and added globally. Rules are specified via "--rules".
-  - xml documents: These files will be parsed like the rules documents, but
-    anything defined in them applies only inside this document. 
+  - YAML or XML documents: These files will be parsed like the rules documents, but
+    anything defined in them applies only inside this document.
   - all other input files
 If a rules file is provided via the command line flag "--rules", then the
 builtin rules are disabled, unless you specifically add them by passing "-b".
 You can provide as many rule sets as you like, and all of them will be added
-globally. The rest of the input files is processed individually. If the file 
-extension is ".xml", then the file will be parsed like an additional rules file.
-However, this document must have a <files> element that lists all mutation
-targets. Any other file is interpreted as mutation target and processed with 
-the rules from the documents provided via "--rules". 
+globally. The rest of the input files is processed individually. If the file
+extension is ".yaml", ".yml", or ".xml", then the file will be parsed like an
+additional config file. This document must list all mutation targets (via files
+or directories). Any other file is interpreted as mutation target and processed
+with the rules from the documents provided via "--rules".
 
-The rules documents and the input xml files use the same syntax, so both 
+The rules documents and the input config files use the same syntax, so both
 files may define mutation rules, inputs, exclusions or test commands.
 However, a quality threshold may only be defined once. 
 
 ## Reports
 After a input file is processed, a report is generated. You can choose multiple output formats for the reports. As default, a html file is generated, but you can also choose xunit/junit, markdown or XML. You can see examples of the outputs in the [example folder](example/config-report.md).
 
-## Input XML documents
+## Input config documents (YAML or XML)
 
-This chapter explains the structure of the input XML documents. They must conform to the following schema:
-```Xml
-<?xml version="1.0" encoding="UTF-8"?>
-<mutations version="1.2">
-    <files>
-    ...
-    </files>
-    <directories>
-    ...
-    </directories>
-    <commands>
-    ...
-    </commands>
-    <exclude>
-    ...
-    </exclude>
-    <rules>
-    ...
-    </rules>
-    <threshold failure="80">
-    ...
-    </threshold>
-</mutations>
+This chapter explains the structure of the input config documents. YAML is the recommended format; XML is also supported for backward compatibility. They must conform to the following schema (shown in YAML):
+```yaml
+version: "1.2"
+files:
+  ...
+directories:
+  ...
+commands:
+  ...
+exclude:
+  ...
+rules:
+  ...
+threshold:
+  ...
 ```
 You can see an example for an input document in the example folder, or the application can generate one by running one of these commands:
 ```bash
-# Shows a XML document with the complete syntax:
+# Shows a YAML document with the complete syntax (use --xml for XML format):
 mutation_test -s
-# Shows the builtin mutation rules and exclusions:
+# Shows the builtin mutation rules and exclusions (use --xml for XML format):
 mutation_test -g
 ```
 The generated documents also contain some helpful comments on how to create your own rules. You should usually provide two different documents: one with the mutation rules given as argument to "-r" and another one with the input files. The reason why mutation_test always loads two files (unless you disable the builtin rule set via "--no-builtin" and don't provide your own rules file) is that you can reuse the same set of rules for many different input files.
@@ -350,7 +343,7 @@ Here is a table of all XML elements that are parsed by this program:
 ## Command line arguments
 
 ```bash
-mutation_test <options> <input xml files...>
+mutation_test <options> <input yaml/xml or source files...>
 ```
 The program accepts the following command line arguments:
 
@@ -360,17 +353,18 @@ The program accepts the following command line arguments:
 |                | --version                 | Prints the version                                                                                        |
 |                | --about                   | Prints information about the application                                                                  |
 | -b             | --(no-)builtin            | Adds or removes the builtin rule set                                                                       |
-| -s             | --show-example            | Prints a XML file to the console with every possible option                                               |
-| -g             | --generate-rules          | Prints the builtin rule set as XML string                                                                  |
+| -s             | --show-example            | Prints a YAML config to the console with every possible option (use --xml for XML output)                 |
+| -g             | --generate-rules          | Prints the builtin rule set as a YAML string (use --xml for XML output)                                   |
+|                | --xml                     | Output XML format for --show-example and --generate-rules (default is YAML)                               |
 | -v             | --verbose                 | Verbose output                                                                                            |
 | -q             | --quiet                   | Disable output                                                                                            |
 | -d             | --dry                     | Dry run - loads the configuration and counts the possible mutations in all files, but runs no tests       |
 | -o             | --output=<directory>      | Sets the output directory (defaults to ".")                                                               |
 | -f             | --format                  | Sets the report file format \[html (default), junit, xunit, md, xml, all, none\]                          |
-| -r             | --rules=<path to XML file>| Overrides the builtin rule set with the rules in the given XML Document                                    |
+| -r             | --rules=<path to YAML or XML file>| Overrides the builtin rule set with the rules in the given YAML or XML document                      |
 |                | --exclude-strings         | Adds experimental string exclusion                                                                         |
 
-The rest are excepted to be paths to input XML configuration files.
+The rest are expected to be paths to input YAML or XML configuration files, or source files to mutate directly.
 
 ## License
 mutation_test is free software, as in "free beer" and "free speech". 
