@@ -1,3 +1,10 @@
+## 1.9.0
+ - YAML config files (`.yaml` / `.yml`) are now supported alongside XML
+ - YAML is the recommended config format; XML remains fully supported
+ - `--show-example` (`-s`) and `--generate-rules` (`-g`) now output YAML by default; use the new `--xml` flag to get XML output instead
+ - The `--rules` flag now accepts YAML or XML documents
+ - Builtin mutation rules are now loaded internally as YAML
+
 ## 1.8.1
  - Test commands are now spawned in a shell on all platforms
 
