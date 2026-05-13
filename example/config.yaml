@@ -1,0 +1,29 @@
+# License: BSD-3-Clause
+version: "1.0"
+
+files:
+  - path: example/source.dart
+  - path: example/source2.dart
+    # lines can be whitelisted
+    # if there is no whitelist, the whole file is used
+    # line index starts at 1
+    lines:
+      - begin: 9
+        end: 60
+  - path: example/source3.dart
+
+exclude:
+  # lines can also be globally excluded
+  lines:
+    - begin: 1
+      end: 2
+
+commands:
+  - text: "dart test test/example_test.dart"
+    group: test
+    expected-return: 0
+    working-directory: "."
+  - text: "dart test test/example2_test.dart"
+    group: test
+    expected-return: 0
+    working-directory: "."
